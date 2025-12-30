@@ -32,22 +32,36 @@ async function fetchAndExtract(url){
   }
 }
 
-async function callOpenAI(prompt){
-  const payload = {
-    model: 'gpt-3.5-turbo',
-    messages: [
-      { role: 'user', content: prompt }
-    ],
-    max_tokens: 1500
-  };
-  const resp = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
-    headers: {
-      Authorization: `Bearer ${OPENAI_KEY}`,
-      'Content-Type': 'application/json'
+async function callOpenAI(prompt, retries = 3){
+  for (let attempt = 0; attempt < retries; attempt++){
+    try{
+      const payload = {
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 1500
+      };
+      const resp = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
+        headers: {
+          Authorization: `Bearer ${OPENAI_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
+      return resp.data.choices && resp.data.choices[0] && resp.data.choices[0].message.content;
+    } catch(e){
+      if (e.response && e.response.status === 429 && attempt < retries - 1){
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`Rate limited. Waiting ${delay}ms before retry ${attempt + 1}/${retries - 1}...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw e;
+      }
     }
-  });
-  return resp.data.choices && resp.data.choices[0] && resp.data.choices[0].message.content;
+  }
 }
+
 
 function buildPrompt(originalTitle, originalContent, refs){
   const refSummaries = refs.map((r, i)=> `Reference ${i+1} Title: ${r.title}\nURL: ${r.link}\nExcerpt:\n${r.text.slice(0,1000)}\n---`).join('\n\n');

@@ -1,41 +1,114 @@
 # BeyondChats Assignment - Full Stack Project
 
-This repository contains a minimal implementation for the three-phase assignment:
+A three-phase full-stack project that scrapes articles, updates them using AI, and displays them in a responsive UI.
 
-- Backend: Node.js + Express + SQLite for storing articles and providing CRUD APIs.
-- Phase 1: Scraper to fetch oldest 5 articles from BeyondChats blogs and save to DB.
-- Phase 2: Updater script that finds top-2 Google references, scrapes them, calls OpenAI to re-write and publishes updates.
-- Frontend: Small React (Vite) app to view original and updated articles.
+## Project Overview
 
-## Quick Setup
+**Phase 1:** Scrape 5 oldest articles from BeyondChats blogs and store in a local JSON database.
+**Phase 2:** Search Google for top references, scrape their content, use OpenAI GPT-3.5 to rewrite articles with similar formatting, and save updates.
+**Phase 3:** React frontend displaying original and updated articles side-by-side.
 
-1. Backend
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────┐
+│                  BeyondChats Articles                 │
+│                   (Online Source)                     │
+└────────────────────────┬─────────────────────────────┘
+                         │
+                    [Scraper.js]
+                         │
+                         ▼
+┌──────────────────────────────────────────────────────┐
+│             Local JSON Database                       │
+│          (backend/articles.json)                      │
+└───────┬──────────────────────────────┬────────────────┘
+        │                              │
+   [Phase 1]                      [Phase 2]
+   (Scraper)             (Update Script + OpenAI)
+        │                              │
+        │                 ┌────────────┴──────────────┐
+        │                 │                           │
+        │            [Google Search]            [OpenAI API]
+        │                 │                           │
+        │                 └────────────┬──────────────┘
+        │                              │
+        └──────────────┬───────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│            Express Backend API                        │
+│    (CRUD endpoints on port 4000)                     │
+└──────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│          React Frontend (Vite)                        │
+│    (Display articles, port 3000)                     │
+└──────────────────────────────────────────────────────┘
+```
+
+## Data Flow
+
+1. **Scraper** fetches last page of BeyondChats blogs, extracts article links and content, saves to `articles.json`.
+2. **Update Script** reads articles from JSON DB, searches Google for top 2 references, scrapes their content, sends to OpenAI for rewriting, saves updated content back to JSON DB.
+3. **Express API** provides GET/POST/PUT/DELETE endpoints for articles.
+4. **React Frontend** fetches articles from API and displays original vs. updated versions in a responsive UI.
+
+## Quick Start
+
+### 1. Backend Setup
 
 ```bash
 cd backend
 npm install
-# copy .env.example to .env and set OPENAI_API_KEY
-# optionally set PORT
-npm start
+cp .env.example .env
 ```
 
-2. Scrape BeyondChats (Phase 1)
+Edit `.env` and set your OpenAI API key:
+```
+OPENAI_API_KEY=sk-proj-xxxxx...
+PORT=4000
+API_BASE=http://localhost:4000
+```
+
+### 2. Start Backend Server
 
 ```bash
 cd backend
-npm run scrape
+node index.js
 ```
 
-3. Run the update script (Phase 2)
+Server will run on `http://localhost:4000`.
 
-Make sure backend is running and `.env` has `OPENAI_API_KEY`.
+### 3. Scrape Articles (Phase 1)
 
+In a new terminal:
 ```bash
 cd backend
-npm run update
+node scraper.js
 ```
 
-4. Frontend
+This fetches 5 oldest articles from https://beyondchats.com/blogs/ and saves them to `articles.json`.
+
+### 4. Update Articles (Phase 2)
+
+In a new terminal:
+```bash
+cd backend
+node update_script.js
+```
+
+Script will:
+- Search Google for each article title
+- Scrape top 2 result pages
+- Call OpenAI to rewrite articles based on references
+- Includes retry logic for rate limits (exponential backoff)
+- Save updated content back to database
+
+**Note:** This step requires a valid OpenAI API key with available credits.
+
+### 5. Frontend Setup (Phase 3)
 
 ```bash
 cd frontend
@@ -43,27 +116,82 @@ npm install
 npm run dev
 ```
 
-Open the frontend (default Vite URL) and ensure the backend is available at `http://localhost:4000` or set `VITE_API_BASE` in `frontend/.env`.
+Frontend will run on `http://localhost:3000`.
 
-## Architecture / Data Flow
+### 6. View Articles
 
-- Scraper script fetches the last page of `https://beyondchats.com/blogs/`, extracts article links and content, and inserts rows into SQLite (`backend/articles.db`).
-- Express API exposes `GET /articles`, `GET /articles/:id`, `POST /articles`, `PUT /articles/:id`, `DELETE /articles/:id`.
-- Update script fetches articles via `GET /articles`, uses `google-it` to retrieve top search results, scrapes their content (via `unfluff`), sends a prompt to OpenAI to rewrite the article, then PUTs the updated HTML back to the API.
-- Frontend fetches `/articles` and displays both original and updated content (if present).
+Open browser to `http://localhost:3000` and select articles from the sidebar to view original and updated versions.
 
-## Important Notes
+## Running All Steps
 
-- Do NOT commit your real `OPENAI_API_KEY` to the repo. Use `.env` and keep the key secret.
-- This project uses simple content extraction heuristics — results may vary depending on target pages.
+```bash
+cd backend && node index.js &
+sleep 2
+cd backend && node scraper.js
+cd backend && node update_script.js
+cd frontend && npm run dev
+```
 
-## Files of Interest
+## Project Structure
 
-- Backend: `backend/index.js`, `backend/scraper.js`, `backend/update_script.js`, `backend/db.js`
-- Frontend: `frontend/src/App.jsx`, `frontend/src/api.js`
+```
+.
+├── backend/
+│   ├── index.js              # Express server with CRUD APIs
+│   ├── db.js                 # JSON file-based database
+│   ├── scraper.js            # Phase 1: Article scraper
+│   ├── update_script.js       # Phase 2: Article updater with OpenAI
+│   ├── articles.json         # Local database
+│   ├── package.json
+│   └── .env                  # Environment variables (git ignored)
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx           # Main React component
+│   │   ├── api.js            # API client
+│   │   ├── main.jsx          # React entry point
+│   │   └── styles.css        # Styling
+│   ├── index.html
+│   ├── vite.config.js        # Vite configuration
+│   ├── package.json
+│   └── node_modules/
+├── README.md
+├── .gitignore
+└── .git/
 
-## Live Link
+```
 
-If you host the frontend (e.g., Vercel) and backend (e.g., Heroku), include the link here.
+## Tech Stack
+
+- **Backend:** Node.js + Express + Cheerio (scraping)
+- **Database:** JSON file-based
+- **AI:** OpenAI GPT-3.5-turbo
+- **Frontend:** React 18 + Vite
+- **Search:** google-it npm package
+
+## Features
+
+✅ Scrapes articles from target website
+✅ Stores articles in local JSON DB
+✅ CRUD REST API
+✅ Google search integration
+✅ Content scraping & extraction
+✅ AI-powered article rewriting
+✅ Rate limit handling with exponential backoff
+✅ Responsive React UI
+✅ Original + Updated article comparison
+
+## Notes
+
+- `.env` is git-ignored; use `.env.example` as template
+- OpenAI API calls may incur costs
+- Google search results may vary by region/time
+- Scraping respects robots.txt and uses appropriate User-Agent headers
+
+## Submission
+
+This project is tracked in git with frequent commits. For submission:
+- Push to public GitHub repo
+- Include live frontend link (e.g., Vercel, Netlify)
+- Backend can be deployed to Heroku, Railway, or similar
 
 
